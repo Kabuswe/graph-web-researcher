@@ -1,0 +1,16 @@
+{
+  "name": "@kabuswe/graph-web-researcher",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "dev": "langgraph dev", "build": "tsc" },
+  "dependencies": {
+    "@kabuswe/graph-contracts": "^0.1.0",
+    "@langchain/langgraph": "^0.2.0",
+    "@langchain/langgraph-checkpoint-postgres": "^0.0.10",
+    "@langchain/openrouter": "latest",
+    "@langchain/mcp-adapters": "latest",
+    "pg": "^8.11.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": { "typescript": "^5.4.0" }
+}
