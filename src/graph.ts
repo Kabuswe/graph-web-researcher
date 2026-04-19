@@ -1,47 +1,41 @@
-/**
+﻿/**
  * graph-web-researcher
  *
- * Pipeline: decomposeQuery → [parallel searchBranch × queries] → mergeFindings → deduplicateFindings → synthesizeSummary
+ * Pipeline: decomposeQuery â†’ [parallel searchBranch Ã— queries] â†’ mergeFindings â†’ deduplicateFindings â†’ synthesizeSummary
  *
  * Input:  WebResearcherInput  (topic, timeframe?, maxSources)
  * Output: WebResearcherOutput (synthesis, findings[], sourceUrls[])
  *
- * TODO: implement nodes under src/nodes/ per PRD.md
- * TODO: wire Tavily MCP client in src/search.ts
+ * Implementation tracked in GitHub issues -- see repo Issues tab.
  */
 
-import { StateGraph, START, END, MemorySaver, StateSchema, UntrackedValue, Send } from '@langchain/langgraph';
+import { StateGraph, START, END, MemorySaver, Annotation, Send } from '@langchain/langgraph';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import pg from 'pg';
-import { z } from 'zod';
 
-function lastValue<T>(schema: z.ZodType<T, any, any>): UntrackedValue<T> {
-  return schema as unknown as UntrackedValue<T>;
-}
-
-const ResearchState = new StateSchema({
-  topic:              lastValue(z.string().default('')),
-  timeframe:          lastValue(z.string().optional()),
-  maxSources:         lastValue(z.number().default(8)),
-  searchQueries:      lastValue(z.array(z.string()).default(() => [])),
-  rawResults:         lastValue(z.array(z.any()).default(() => [])),
-  normalizedResults:  lastValue(z.array(z.any()).default(() => [])),
-  dedupedResults:     lastValue(z.array(z.any()).default(() => [])),
-  sourceUrls:         lastValue(z.array(z.string()).default(() => [])),
-  synthesis:          lastValue(z.any().optional()),
-  findings:           lastValue(z.array(z.string()).default(() => [])),
-  error:              lastValue(z.string().optional()),
-  phase:              lastValue(z.string().default('')),
+// rawResults must use a concat reducer so parallel searchBranch fan-out nodes can each append
+const ResearchState = Annotation.Root({
+  topic:             Annotation<string>({ default: () => '', reducer: (_l, r) => r }),
+  timeframe:         Annotation<string | undefined>({ default: () => undefined, reducer: (_l, r) => r }),
+  maxSources:        Annotation<number>({ default: () => 8, reducer: (_l, r) => r }),
+  searchQueries:     Annotation<string[]>({ default: () => [], reducer: (_l, r) => r }),
+  rawResults:        Annotation<unknown[]>({ default: () => [], reducer: (l, r) => [...l, ...(Array.isArray(r) ? r : [r])] }),
+  normalizedResults: Annotation<unknown[]>({ default: () => [], reducer: (_l, r) => r }),
+  dedupedResults:    Annotation<unknown[]>({ default: () => [], reducer: (_l, r) => r }),
+  sourceUrls:        Annotation<string[]>({ default: () => [], reducer: (_l, r) => r }),
+  synthesis:         Annotation<unknown>({ default: () => undefined, reducer: (_l, r) => r }),
+  findings:          Annotation<string[]>({ default: () => [], reducer: (_l, r) => r }),
+  error:             Annotation<string | undefined>({ default: () => undefined, reducer: (_l, r) => r }),
+  phase:             Annotation<string>({ default: () => '', reducer: (_l, r) => r }),
 });
 
 const standardRetry = { maxAttempts: 3, initialInterval: 1000, backoffFactor: 2 };
 
-// TODO: implement real nodes
-const decomposeQueryNode     = async (s: any) => ({ phase: 'decompose-query', searchQueries: [s.topic] });
-const searchBranchNode       = async (s: any) => ({ rawResults: [] });
-const mergeFindingsNode      = async (s: any) => ({ phase: 'merge-findings', normalizedResults: s.rawResults });
-const deduplicateFindingsNode = async (s: any) => ({ phase: 'deduplicate', dedupedResults: s.normalizedResults, sourceUrls: [] });
-const synthesizeSummaryNode  = async (s: any) => ({ phase: 'synthesize', synthesis: { headline: '', keyPoints: [], sentiment: 'neutral', confidence: 0 }, findings: [] });
+import { decomposeQueryNode }      from './nodes/decomposeQuery.js';
+import { searchBranchNode }        from './nodes/searchBranch.js';
+import { mergeFindingsNode }        from './nodes/mergeFindings.js';
+import { deduplicateFindingsNode } from './nodes/deduplicateFindings.js';
+import { synthesizeSummaryNode }   from './nodes/synthesizeSummary.js';
 
 // Fan-out: dispatch one Send per query
 const dispatchSearches = (s: any): Send[] =>
