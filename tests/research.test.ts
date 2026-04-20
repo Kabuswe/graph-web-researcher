@@ -1,63 +1,34 @@
 /**
- * tests/research.test.ts — integration test for graph-web-researcher
+ * tests/research.test.ts — vitest integration tests for graph-web-researcher.
+ * Makes real Tavily + OpenRouter calls — requires TAVILY_API_KEY and OPENROUTER_API_KEY in .env.
  */
 import "dotenv/config";
+import { describe, test, expect } from "vitest";
 import { graph } from "../src/graph.js";
 
-const TEST_CASES = [
-  {
-    name: "LangGraph state management",
-    input: {
-      topic: "LangGraph state management in TypeScript agents",
-      maxSources: 4,
-    },
-    validate: (r: Record<string, unknown>) =>
-      Array.isArray(r.findings) && (r.findings as unknown[]).length > 0 &&
-      r.synthesis != null &&
-      Array.isArray(r.sourceUrls) && (r.sourceUrls as unknown[]).length > 0,
-  },
-  {
-    name: "OpenAI structured outputs",
-    input: {
-      topic: "OpenAI structured outputs JSON schema strict mode",
-      maxSources: 3,
-    },
-    validate: (r: Record<string, unknown>) =>
-      Array.isArray(r.findings) && (r.findings as unknown[]).length > 0 &&
-      r.synthesis != null,
-  },
-];
+describe("graph-web-researcher", () => {
+  test("researches LangGraph state management", async () => {
+    const result = await graph.invoke(
+      { topic: "LangGraph state management in TypeScript agents", maxSources: 4 },
+      { configurable: { thread_id: `test-${Date.now()}` } },
+    );
+    expect(Array.isArray(result.findings)).toBe(true);
+    expect((result.findings as unknown[]).length).toBeGreaterThan(0);
+    expect(result.synthesis).not.toBeNull();
+    expect(Array.isArray(result.sourceUrls)).toBe(true);
+    expect((result.sourceUrls as unknown[]).length).toBeGreaterThan(0);
+    const synth = result.synthesis as Record<string, unknown>;
+    expect(typeof synth?.headline).toBe("string");
+    expect(Array.isArray(synth?.keyPoints)).toBe(true);
+  }, 90000);
 
-async function runTest(tc: (typeof TEST_CASES)[0]) {
-  const config = { configurable: { thread_id: `test-${Date.now()}` } };
-  const result = await graph.invoke(tc.input, config);
-
-  const valid = tc.validate(result as Record<string, unknown>);
-  const icon = valid ? "✅" : "⚠️";
-  const synth = result.synthesis;
-  const synthPreview = typeof synth === "string"
-    ? synth.slice(0, 120)
-    : (synth as any)?.summary?.slice(0, 120) ?? JSON.stringify(synth ?? "").slice(0, 120);
-
-  console.log(
-    `${icon} [${tc.name}] findings=${(result.findings as unknown[])?.length ?? 0} sources=${(result.sourceUrls as unknown[])?.length ?? 0}`,
-  );
-  console.log(`   synthesis: ${synthPreview}...`);
-  if (!valid) {
-    console.log(`   FAIL — got:`, JSON.stringify(result, null, 2).slice(0, 400));
-  }
-  return valid;
-}
-
-async function main() {
-  console.log("\n=== graph-web-researcher integration tests ===\n");
-  const results = [];
-  for (const tc of TEST_CASES) {
-    results.push(await runTest(tc));
-  }
-  const passed = results.filter(Boolean).length;
-  console.log(`\n${passed}/${results.length} passed`);
-  if (passed < results.length) process.exit(1);
-}
-
-main().catch(err => { console.error(err); process.exit(1); });
+  test("researches OpenAI structured outputs", async () => {
+    const result = await graph.invoke(
+      { topic: "OpenAI structured outputs JSON schema strict mode", maxSources: 3 },
+      { configurable: { thread_id: `test-${Date.now()}` } },
+    );
+    expect(Array.isArray(result.findings)).toBe(true);
+    expect((result.findings as unknown[]).length).toBeGreaterThan(0);
+    expect(result.synthesis).not.toBeNull();
+  }, 90000);
+});
